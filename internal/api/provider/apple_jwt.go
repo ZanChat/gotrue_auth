@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/sirupsen/logrus"
 )
 
 // AppleJWTGenerator: Used to generate Apple OAuth JWT client secret
@@ -42,7 +43,7 @@ func (g *AppleJWTGenerator) GenerateClientSecret() (string, error) {
 	claims := jwt.MapClaims{
 		"iss": g.teamID,
 		"iat": now.Unix(),
-		"exp": now.Add(6 * time.Hour).Unix(), // Apple建议JWT token有效期不超过6小时
+		"exp": now.Add(30 * 24 * time.Hour).Unix(), // Apple JWT token expires in 30 days
 		"aud": "https://appleid.apple.com",
 		"sub": g.clientID,
 	}
@@ -56,10 +57,12 @@ func (g *AppleJWTGenerator) GenerateClientSecret() (string, error) {
 		return "", fmt.Errorf("failed to sign JWT: %w", err)
 	}
 
+	logrus.WithField("component", "apple_jwt").Info("Generated new Apple JWT token")
+
 	return signedToken, nil
 }
 
-// IsExpired: Check if the JWT token is about to expire (considered expired 5 minutes in advance)
+// IsExpired: Check if the JWT token is about to expire (considered expired 7 days in advance)
 func (g *AppleJWTGenerator) IsExpired(tokenString string) bool {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return &g.privateKey.PublicKey, nil
@@ -72,8 +75,8 @@ func (g *AppleJWTGenerator) IsExpired(tokenString string) bool {
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		if exp, ok := claims["exp"].(float64); ok {
 			expTime := time.Unix(int64(exp), 0)
-			// Consider expired 5 minutes in advance
-			return time.Now().Add(5 * time.Minute).After(expTime)
+			// Consider expired 7 days in advance
+			return time.Now().Add(7 * 24 * time.Hour).After(expTime)
 		}
 	}
 	
