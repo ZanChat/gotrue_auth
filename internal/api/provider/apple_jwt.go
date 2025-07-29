@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/sirupsen/logrus"
 )
 
 // AppleJWTGenerator: Used to generate Apple OAuth JWT client secret
@@ -56,8 +55,6 @@ func (g *AppleJWTGenerator) GenerateClientSecret() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to sign JWT: %w", err)
 	}
-
-	logrus.WithField("component", "apple_jwt").Info("Generated new Apple JWT token")
 
 	return signedToken, nil
 }
