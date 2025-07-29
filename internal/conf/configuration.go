@@ -61,11 +61,16 @@ func (t *Time) UnmarshalText(text []byte) error {
 type OAuthProviderConfiguration struct {
 	ClientID       []string `json:"client_id" split_words:"true"`
 	Secret         string   `json:"secret"`
+	PrivateKey     string   `json:"private_key" split_words:"true"`
 	RedirectURI    string   `json:"redirect_uri" split_words:"true"`
 	URL            string   `json:"url"`
 	ApiURL         string   `json:"api_url" split_words:"true"`
 	Enabled        bool     `json:"enabled"`
 	SkipNonceCheck bool     `json:"skip_nonce_check" split_words:"true"`
+	
+	// Apple specific fields
+	TeamID string `json:"team_id" split_words:"true"`
+	KeyID  string `json:"key_id" split_words:"true"`
 }
 
 type AnonymousProviderConfiguration struct {
@@ -1152,8 +1157,8 @@ func (o *OAuthProviderConfiguration) ValidateOAuth() error {
 	if len(o.ClientID) == 0 {
 		return errors.New("missing OAuth client ID")
 	}
-	if o.Secret == "" {
-		return errors.New("missing OAuth secret")
+	if o.Secret == "" && o.PrivateKey == "" {
+		return errors.New("missing OAuth secret or private key")
 	}
 	if o.RedirectURI == "" {
 		return errors.New("missing redirect URI")

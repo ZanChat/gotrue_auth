@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/sirupsen/logrus"
@@ -48,6 +50,14 @@ func DetectAppleIDTokenIssuer(ctx context.Context, idToken string) (string, erro
 type AppleProvider struct {
 	*oauth2.Config
 	oidc *oidc.Provider
+	
+	// JWT相关字段
+	jwtGenerator *AppleJWTGenerator
+	teamID       string
+	keyID        string
+	currentSecret string
+	secretMutex   sync.RWMutex
+	lastGenerated time.Time
 }
 
 type IsPrivateEmail bool
@@ -102,7 +112,7 @@ func NewAppleProvider(ctx context.Context, ext conf.OAuthProviderConfiguration) 
 		return nil, err
 	}
 
-	return &AppleProvider{
+	provider := &AppleProvider{
 		Config: &oauth2.Config{
 			ClientID:     ext.ClientID[0],
 			ClientSecret: ext.Secret,
@@ -114,14 +124,85 @@ func NewAppleProvider(ctx context.Context, ext conf.OAuthProviderConfiguration) 
 			RedirectURL: ext.RedirectURI,
 		},
 		oidc: oidcProvider,
-	}, nil
+	}
+
+	// If private key is configured, set JWT generator
+	if ext.PrivateKey != "" {
+		// Get teamID and keyID from configuration
+		teamID := ext.TeamID
+		keyID := ext.KeyID
+		
+		// If teamID or keyID is empty, log warning but continue using static secret
+		if teamID == "" || keyID == "" {
+			logrus.Warn("Apple OAuth: team_id or key_id not configured, JWT generation will be disabled")
+		} else {
+			jwtGenerator, err := NewAppleJWTGenerator(ext.PrivateKey, ext.ClientID[0], teamID, keyID)
+			if err != nil {
+				logrus.WithError(err).Warn("Failed to create Apple JWT generator, falling back to static secret")
+			} else {
+				provider.jwtGenerator = jwtGenerator
+				provider.teamID = teamID
+				provider.keyID = keyID
+				
+				// Generate initial JWT secret
+				if secret, err := jwtGenerator.GenerateClientSecret(); err == nil {
+					provider.currentSecret = secret
+					provider.lastGenerated = time.Now()
+					provider.Config.ClientSecret = secret
+					logrus.Info("Apple OAuth: JWT client secret generation enabled")
+				}
+			}
+		}
+	}
+
+	return provider, nil
+}
+
+// getOrGenerateSecret get the current client secret, if expired, regenerate it
+func (p *AppleProvider) getOrGenerateSecret() string {
+	p.secretMutex.RLock()
+	if p.jwtGenerator != nil && p.currentSecret != "" {
+		// Check if it's about to expire
+		if !p.jwtGenerator.IsExpired(p.currentSecret) {
+			defer p.secretMutex.RUnlock()
+			return p.currentSecret
+		}
+	}
+	p.secretMutex.RUnlock()
+
+	// Need to regenerate
+	p.secretMutex.Lock()
+	defer p.secretMutex.Unlock()
+
+	// Double check
+	if p.jwtGenerator != nil && p.currentSecret != "" && !p.jwtGenerator.IsExpired(p.currentSecret) {
+		return p.currentSecret
+	}
+
+	// Generate new JWT secret
+	if p.jwtGenerator != nil {
+		if secret, err := p.jwtGenerator.GenerateClientSecret(); err == nil {
+			p.currentSecret = secret
+			p.lastGenerated = time.Now()
+			p.Config.ClientSecret = secret
+			logrus.Debug("Generated new Apple JWT client secret")
+			return secret
+		} else {
+			logrus.WithError(err).Error("Failed to generate Apple JWT client secret")
+		}
+	}
+
+	// If JWT generation fails, return the original secret
+	return p.Config.ClientSecret
 }
 
 // GetOAuthToken returns the apple provider access token
 func (p AppleProvider) GetOAuthToken(code string) (*oauth2.Token, error) {
+	clientSecret := p.getOrGenerateSecret()
+	
 	opts := []oauth2.AuthCodeOption{
 		oauth2.SetAuthURLParam("client_id", p.ClientID),
-		oauth2.SetAuthURLParam("secret", p.ClientSecret),
+		oauth2.SetAuthURLParam("secret", clientSecret),
 	}
 	return p.Exchange(context.Background(), code, opts...)
 }

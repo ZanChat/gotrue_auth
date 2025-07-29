@@ -465,6 +465,33 @@ The base URL used for constructing the URLs to request authorization and access 
 
 #### Apple OAuth
 
+Apple OAuth supports two authentication methods:
+
+1. **Static Client Secret** (Legacy): Use a static client secret provided by Apple
+2. **JWT Client Secret** (Recommended): Automatically generate JWT client secrets using your private key
+
+For JWT client secret generation, you need to configure:
+
+```properties
+GOTRUE_EXTERNAL_APPLE_ENABLED=true
+GOTRUE_EXTERNAL_APPLE_CLIENT_ID=your.app.bundle.id
+GOTRUE_EXTERNAL_APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+GOTRUE_EXTERNAL_APPLE_TEAM_ID=your_team_id
+GOTRUE_EXTERNAL_APPLE_KEY_ID=your_key_id
+GOTRUE_EXTERNAL_APPLE_REDIRECT_URI=http://localhost:9999/callback
+```
+
+The JWT client secret will be automatically generated and refreshed before expiration (6 hours validity).
+
+For static client secret (legacy method):
+
+```properties
+GOTRUE_EXTERNAL_APPLE_ENABLED=true
+GOTRUE_EXTERNAL_APPLE_CLIENT_ID=your.app.bundle.id
+GOTRUE_EXTERNAL_APPLE_SECRET=your_static_client_secret
+GOTRUE_EXTERNAL_APPLE_REDIRECT_URI=http://localhost:9999/callback
+```
+
 To try out external authentication with Apple locally, you will need to do the following:
 
 1. Remap localhost to \<my_custom_dns \> in your `/etc/hosts` config.
@@ -496,7 +523,8 @@ To try out external authentication with Apple locally, you will need to do the f
    ```
 
 3. Generate the crt and key file. See [here](https://www.freecodecamp.org/news/how-to-get-https-working-on-your-local-development-environment-in-5-minutes-7af615770eec/) for more information.
-4. Generate the `GOTRUE_EXTERNAL_APPLE_SECRET` by following this [post](https://medium.com/identity-beyond-borders/how-to-configure-sign-in-with-apple-77c61e336003)!
+4. For JWT method: Download your private key from Apple Developer Console and configure the required fields.
+5. For static secret method: Generate the `GOTRUE_EXTERNAL_APPLE_SECRET` by following this [post](https://medium.com/identity-beyond-borders/how-to-configure-sign-in-with-apple-77c61e336003)!
 
 ### E-Mail
 
